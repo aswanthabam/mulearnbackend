@@ -302,16 +302,26 @@ class UserSerializer(serializers.ModelSerializer):
     )
 
     def create(self, validated_data):
+        print(validated_data)
+        if not validated_data.get("provider"):
+            validated_data["provider"] = "email"
+        if validated_data.get("provider") == "email" and not validated_data.get(
+            "password"
+        ):
+            raise serializers.ValidationError("Password is required")
+        if validated_data.get("provider") == "google" and not validated_data.get(
+            "provider_id"
+        ):
+            raise serializers.ValidationError("Provider ID is required")
         role = validated_data.pop("role", None)
         area_of_interest = validated_data.pop("area_of_interest", None)
-
         validated_data["muid"] = register_helper.generate_muid(
             validated_data["full_name"]
         )
-
-        password = validated_data.pop("password")
-        hashed_password = make_password(password)
-        validated_data["password"] = hashed_password
+        if validated_data.get("password"):
+            password = validated_data.pop("password")
+            hashed_password = make_password(password)
+            validated_data["password"] = hashed_password
 
         user = super().create(validated_data)
 
@@ -360,6 +370,8 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "district",
             "area_of_interest",
+            "provider",
+            "provider_id",
         ]
 
 
@@ -435,16 +447,15 @@ class UserInterestSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.Serializer):
     user = UserSerializer()
-    interests = UserInterestSerializer(required=True)
+    interests = UserInterestSerializer(required=False)
     integration = IntegrationSerializer(required=False)
     referral = ReferralSerializer(required=False)
 
     def create(self, validated_data):
         with transaction.atomic():
             user = UserSerializer().create(validated_data.pop("user"))
-            UserInterestSerializer(context={"user": user}).create(
-                validated_data.pop("interests")
-            )
+            if interests := validated_data.pop("interests", None):
+                UserInterestSerializer(context={"user": user}).create(interests)
             if integration := validated_data.pop("integration", None):
                 integration.update({"user": user})
                 IntegrationSerializer().create(integration)

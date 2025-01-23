@@ -228,9 +228,12 @@ class RegisterDataAPI(APIView):
 
         user = create_user.save()
         cache.set(f"db_user_{user.muid}", user, timeout=60)
-        password = request.data["user"]["password"]
         cache.set(f"flag_register_{user.muid}", True, timeout=5)
-        res_data = get_auth_token(user.muid, password)
+        if user.provider == "email":
+            password = request.data["user"]["password"]
+            res_data = get_auth_token(user.muid, password)
+        else:
+            res_data = {"muid": user.muid}
 
         response_data = serializers.UserDetailSerializer(user, many=False).data
 

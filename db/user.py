@@ -21,6 +21,14 @@ class User(models.Model):
     full_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True, max_length=200)
     password = models.CharField(max_length=200, blank=True, null=True)
+    provider = models.CharField(max_length=10, blank=False, null=False, choices=[
+        ("email", "email"), 
+        ("google", "google"), 
+        ("discord", "discord"),
+        ("metamask","metamask"),
+        ("github","github")
+    ], default="email")
+    provider_id = models.CharField(max_length=200, blank=False, null=True)
     mobile = models.CharField(unique=True, max_length=15, blank=True, null=True)
     gender = models.CharField(max_length=10, blank=True, null=True, choices=[("Male", "Male"), ("Female", "Female")])
     dob = models.DateField(blank=True, null=True)
