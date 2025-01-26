@@ -1,15 +1,12 @@
 import uuid
-
 from django.db import models
-
 from db.organization import Organization
-
 from django.conf import settings
+from utils.discord import DiscordUtils
 from .user import User
 
 # fmt: off
 # noinspection PyPep8
-
 
 class Channel(models.Model):
     id = models.CharField(primary_key=True, max_length=36)
@@ -30,6 +27,11 @@ class Channel(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def send(self, message):
+        if not discord_id:
+            discord_id = self.discord_id
+        return DiscordUtils.send_message(discord_id, message)
+        
     class Meta:
         managed = False
         db_table = "channel"
@@ -107,8 +109,11 @@ class TaskList(models.Model):
     discord_link = models.CharField(max_length=200, blank=True, null=True)
     title = models.CharField(max_length=75)
     description = models.CharField(max_length=200, null=True)
+    long_description = models.CharField(max_length=2000, null=True, blank=False)
     karma = models.IntegerField(null=True)
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE, null=True)
+    announcement_channel = models.ForeignKey(Channel, on_delete=models.CASCADE, null=True, related_name="task_list_announcement_channel")
+    announcement_message_id = models.CharField(max_length=36, blank=False, null=True)
     type = models.ForeignKey(TaskType, on_delete=models.CASCADE)
     org = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True)
     level = models.ForeignKey(Level, on_delete=models.CASCADE, null=True)

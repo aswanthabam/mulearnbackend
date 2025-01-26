@@ -1,11 +1,13 @@
 from celery import shared_task
+from db.task import TaskList
+from utils.discord import DiscordUtils
 from utils.utils import send_template_mail
 import requests
 from decouple import config
 from db.user import User
 
-DISCORD_GUILD_ID = config("DISCORD_GUILD_ID")
-DISCORD_BOT_TOKEN = config("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = config("DISCORD_BOT_TOKEN", None)
+DISCORD_GUILD_ID = config("DISCORD_GUILD_ID", None)
 
 
 @shared_task
@@ -14,7 +16,29 @@ def send_email(context: dict, subject: str, address: list[str], attachment: str 
 
 
 @shared_task
+def send_task_announcement_message(task_id):
+    DISCORD_BOT_TOKEN = config("DISCORD_BOT_TOKEN", None)
+    if not DISCORD_BOT_TOKEN:
+        return {"status": "error", "message": "Discord bot token not set"}
+    task = TaskList.objects.select_related("announcement_channel").get(id=task_id)
+    if not task.announcement_channel or not task.long_description:
+        return {
+            "status": "error",
+            "message": "Announcement channel or long description not set",
+        }
+    discord_id = task.announcement_channel.discord_id
+    message = task.long_description
+    message_id = DiscordUtils.send_message(discord_id, message)
+    if not message_id:
+        return {"status": "error", "message": "Failed to send message"}
+    task.announcement_message_id = message_id
+    task.save()
+
+
+@shared_task
 def onboard_user(access_token: str, user_id: int):
+    if not DISCORD_BOT_TOKEN or not DISCORD_GUILD_ID:
+        return {"status": "error", "message": "Discord bot token or guild id not set"}
     user = User.objects.get(id=user_id)
     user_response = requests.get(
         "https://discord.com/api/users/@me",

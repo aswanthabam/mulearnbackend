@@ -3,19 +3,17 @@ import uuid
 from rest_framework import serializers
 
 from db.task import TaskList, TaskType
+from mu_celery.task import send_task_announcement_message
 from utils.permission import JWTUtils
 from utils.utils import DateTimeUtils
 
 
 class TaskListSerializer(serializers.ModelSerializer):
-    channel = serializers.CharField(
-        source="channel.name", required=False, default=None)
+    channel = serializers.CharField(source="channel.name", required=False, default=None)
     type = serializers.CharField(source="type.title")
-    level = serializers.CharField(
-        source="level.name", required=False, default=None)
+    level = serializers.CharField(source="level.name", required=False, default=None)
     ig = serializers.CharField(source="ig.name", required=False, default=None)
-    org = serializers.CharField(
-        source="org.title", required=False, default=None)
+    org = serializers.CharField(source="org.title", required=False, default=None)
     total_karma_gainers = serializers.SerializerMethodField()
 
     created_by = serializers.CharField(source="created_by.full_name")
@@ -48,12 +46,21 @@ class TaskListSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_karma_gainers(self, obj):
-        return obj.karma_activity_log_task.filter(
-            appraiser_approved=True
-        ).count()
+        return obj.karma_activity_log_task.filter(appraiser_approved=True).count()
 
 
 class TaskModifySerializer(serializers.ModelSerializer):
+
+    def create(self, validated_data):
+        announcement_channel = validated_data.get("announcement_channel")
+        announcement_message_id = validated_data.get("announcement_message_id")
+        long_description = validated_data.get("long_description")
+
+        instance = super().create(validated_data)
+        if announcement_channel and long_description and not announcement_message_id:
+            send_task_announcement_message.delay(instance.id)
+        return instance
+
     class Meta:
         model = TaskList
         fields = (
@@ -61,8 +68,11 @@ class TaskModifySerializer(serializers.ModelSerializer):
             "discord_link",
             "title",
             "description",
+            "long_description",
             "karma",
             "channel",
+            "announcement_channel",
+            "announcement_message_id",
             "type",
             "active",
             "variable_karma",
@@ -116,11 +126,13 @@ class TaskImportSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
 
-        representation['channel_id'] = instance.channel.name if instance.channel else None
-        representation['type_id'] = instance.type.title if instance.type else None
-        representation['org_id'] = instance.org.code if instance.org else None
-        representation['level_id'] = instance.level.name if instance.level else None
-        representation['ig_id'] = instance.ig.name if instance.ig else None
+        representation["channel_id"] = (
+            instance.channel.name if instance.channel else None
+        )
+        representation["type_id"] = instance.type.title if instance.type else None
+        representation["org_id"] = instance.org.code if instance.org else None
+        representation["level_id"] = instance.level.name if instance.level else None
+        representation["ig_id"] = instance.ig.name if instance.ig else None
 
         return representation
 
@@ -136,13 +148,12 @@ class TaskImportSerializer(serializers.ModelSerializer):
 
 
 class TasktypeSerializer(serializers.ModelSerializer):
-    updated_by = serializers.CharField(source='updated_by.full_name')
-    created_by = serializers.CharField(source='created_by.full_name')
+    updated_by = serializers.CharField(source="updated_by.full_name")
+    created_by = serializers.CharField(source="created_by.full_name")
 
     class Meta:
         model = TaskType
-        fields = ["id", "title", "updated_by",
-                  "updated_at", "created_by", "created_at"]
+        fields = ["id", "title", "updated_by", "updated_at", "created_by", "created_at"]
 
 
 class TaskTypeCreateUpdateSerializer(serializers.ModelSerializer):
@@ -166,6 +177,6 @@ class TaskTypeCreateUpdateSerializer(serializers.ModelSerializer):
         instance.title = updated_title
         user_id = JWTUtils.fetch_user_id(self.context.get("request"))
         instance.updated_by_id = user_id
-        instance.updated_at = DateTimeUtils.get_current_utc_time(),
+        instance.updated_at = (DateTimeUtils.get_current_utc_time(),)
         instance.save()
         return instance
